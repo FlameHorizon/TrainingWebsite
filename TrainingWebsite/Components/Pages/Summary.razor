@@ -21,37 +21,7 @@
 
 </select>
 
-<table class="table">
-    <thead>
-    <tr>
-        <th></th>
-        @foreach (var dt in _dates)
-        {
-            <th>@dt.ToString("yyyy-MM-dd")</th>
-        }
-    </tr>
-    </thead>
-    <tbody>
-    @foreach (var n in _names)
-    {
-        <tr>
-            <td>@n</td>
-            @foreach (var dt in _dates)
-            {
-            if (_map.TryGetValue((dt, n), out var value))
-            {
-                <td>@value</td>
-            }
-            else
-            {
-                <td></td>
-            }
-        }
-        </tr>
-    }
-    
-    </tbody>
-</table>
+<LineChart @ref="_chart" Style="width: 100%"/>
 
 @code {
     private IEnumerable<string> _exercisesFilter = default!;
@@ -60,9 +30,25 @@
     private Dictionary<(DateTime dt, string name), int> _map = [];
     private string _selectedExercise = string.Empty;
 
+    private LineChart _chart = default!;
+    private LineChartOptions _chartOptions = default!;
+    private ChartData _data = default!;
+    private List<Models.WorkoutPlan> _workoutPlans = [];
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _chart.InitializeAsync(_data, _chartOptions);
+        }
+        
+        base.OnAfterRender(firstRender);
+    }
+
     protected override void OnInitialized()
     {
         var workoutPlans = UpdateWorkoutPlansNoFilter();
+        _workoutPlans = workoutPlans;
         _exercisesFilter = workoutPlans
             .SelectMany(x => x.Workouts)
             .Select(x => x.Name);
@@ -73,6 +59,62 @@
 
         // Populate data based on headers.
         UpdateBody(workoutPlans);
+        
+        _chartOptions = new LineChartOptions();
+        _chartOptions.Plugins.Title!.Text = "Workload";
+        _chartOptions.Scales.X = new ChartAxes()
+        {
+            Title = new ChartAxesTitle() { Text = "Date", Display = true }
+        };
+
+        _chartOptions.Scales.Y = new ChartAxes()
+        {
+            Title = new ChartAxesTitle() { Text = "Sum of workload", Display = true }
+        };
+
+        _data = new ChartData()
+        {
+            Datasets = GetDataset(),
+            Labels = GetLabels()
+        };
+    }
+
+    private List<string>? GetLabels()
+    {
+        var labels = new List<string>();
+        foreach (var d in _dates.Order())
+        {
+            labels.Add(d.ToString("yyyy-MM-dd"));
+        }
+        return labels;
+    }
+
+    private List<IChartDataset>? GetDataset()
+    {
+        string[] colors = ColorUtility.CategoricalTwelveColors;
+        var datasets = new List<IChartDataset>();
+        var data = new List<double?>();
+        
+        foreach (var wp in _workoutPlans.OrderBy(x => x.Name.Split(" ").Last()))
+        {
+            var sum = wp.Workouts.SelectMany(x => x.Exercises)
+                .Sum(x => x.Reps * x.Weight);
+            
+            data.Add(sum);
+        }
+
+        var chartDataset = new LineChartDataset()
+        {
+            Data = data,
+            Label = "Workload",
+            BackgroundColor = colors[1],
+            BorderColor = colors[1],
+            BorderWidth = 2,
+            Tension = 0.5
+        };
+        
+        datasets.Add(chartDataset);
+        return datasets;
     }
 
     private List<Models.WorkoutPlan> UpdateWorkoutPlansNoFilter()
