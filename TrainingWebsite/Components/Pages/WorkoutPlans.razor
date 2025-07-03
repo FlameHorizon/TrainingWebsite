@@ -1,0 +1,35 @@
+@page "/"
+@rendermode InteractiveServer
+
+@using Microsoft.EntityFrameworkCore
+@using Shared
+@using Models = Shared.Models
+
+@inject AppDbContext DbContext
+
+<h3>Workout Plans</h3>
+
+<ul>
+@foreach (var wp in _workoutPlans)
+{
+    <li><a href="/workout/@wp.Id">@wp.Name</a></li>
+}
+</ul>
+
+@code {
+    private List<Models.WorkoutPlan> _workoutPlans = [];
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _workoutPlans = DbContext.WorkoutPlans
+                .AsNoTracking()
+                .ToList()
+                .OrderBy(x => x.Name.Split(" ").Last())
+                .ToList();
+            
+            StateHasChanged();
+        }
+    }
+}

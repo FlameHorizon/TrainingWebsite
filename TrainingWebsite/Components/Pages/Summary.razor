@@ -1,0 +1,158 @@
+@page "/summary"
+@rendermode InteractiveServer
+
+@using Microsoft.EntityFrameworkCore
+@using Shared
+@using Models = Shared.Models
+
+@inject AppDbContext DbContext
+@inject ILogger<Workout> Logger
+
+<h3>Summary</h3>
+
+<label for="exercises">Select exercises:</label>
+
+<select name="exercises" id="exercises" @bind="_selectedExercise" @bind:after="PrintResult">
+    <option value="None">None</option>
+    @* <option value="Leg Curl">Leg Curl</option> *@
+    
+    @foreach (var e in _exercisesFilter)
+    {
+        <option value="@e">@e</option>
+    }
+
+</select>
+
+<table class="table">
+    <thead>
+    <tr>
+        <th></th>
+        @foreach (var dt in _dates)
+        {
+            <th>@dt.ToString("yyyy-MM-dd")</th>
+        }
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var n in _names)
+    {
+        <tr>
+            <td>@n</td>
+            @foreach (var dt in _dates)
+            {
+            if (_map.TryGetValue((dt, n), out var value))
+            {
+                <td>@value</td>
+            }
+            else
+            {
+                <td></td>
+            }
+        }
+        </tr>
+    }
+    
+    </tbody>
+</table>
+
+@code {
+    private IEnumerable<string> _exercisesFilter = default!;
+    private List<DateTime> _dates = [];
+    private List<string> _names = [];
+    private Dictionary<(DateTime dt, string name), int> _map = [];
+    private string _selectedExercise = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        var workoutPlans = UpdateWorkoutPlansNoFilter();
+        _exercisesFilter = workoutPlans
+            .SelectMany(x => x.Workouts)
+            .Select(x => x.Name);
+
+        // Collect headers
+        UpdateDates(workoutPlans);
+        UpdateNames(workoutPlans);
+
+        // Populate data based on headers.
+        UpdateBody(workoutPlans);
+    }
+
+    private List<Models.WorkoutPlan> UpdateWorkoutPlansNoFilter()
+    {
+        var workoutPlans = DbContext.WorkoutPlans
+            .Include(x => x.Workouts)
+            .ThenInclude(x => x.Exercises)
+            .AsNoTracking()
+            .ToList();
+        return workoutPlans;
+    }
+
+    private void UpdateBody(List<Models.WorkoutPlan> workoutPlans)
+    {
+        foreach (var wp in workoutPlans)
+        {
+            string split = wp.Name.Split(" ").Last();
+            var dt = Convert.ToDateTime(split);
+            foreach (var w in wp.Workouts)
+            {
+                var name = w.Name;
+                int effort = 0;
+                foreach (var e in w.Exercises)
+                {
+                    effort += e.Reps * (int)e.Weight;                
+                }
+                
+                _map.Add((dt, name), effort);
+            }
+        }
+    }
+
+    private void UpdateNames(List<Models.WorkoutPlan> workoutPlans)
+    {
+        foreach (var workoutPlan in workoutPlans)
+        {
+            _names.AddRange(workoutPlan.Workouts.Select(x => x.Name)); 
+        }
+
+        _names = _names.Distinct().ToList();
+    }
+
+    private void UpdateDates(List<Models.WorkoutPlan> workoutPlans)
+    {
+        _dates = workoutPlans.Select(x =>
+        {
+            string split = x.Name.Split(" ").Last();
+            var dt = Convert.ToDateTime(split);
+            return dt;
+        }).Distinct().Order().ToList();
+    }
+
+    private void PrintResult()
+    {
+        Logger.LogInformation("Selected value is: {s}", _selectedExercise);
+        var workoutPlans = _selectedExercise.ToLower() == "none"
+            ? UpdateWorkoutPlansNoFilter()
+            : UpdateWorkoutPlanFilter(_selectedExercise);
+
+        _dates.Clear();
+        _names.Clear();
+        _map.Clear();
+        
+        UpdateDates(workoutPlans);
+        UpdateNames(workoutPlans);
+        UpdateBody(workoutPlans);
+        
+        StateHasChanged();
+    }
+
+    private List<Models.WorkoutPlan> UpdateWorkoutPlanFilter(string filter)
+    {
+        return DbContext.WorkoutPlans
+            .Include(x => x.Workouts.Where(y => y.Name == filter))
+            .ThenInclude(x => x.Exercises)
+            .AsNoTracking()
+            .Where(x => x.Workouts.Any(y => y.Name == filter))
+            .ToList();
+    }
+
+}

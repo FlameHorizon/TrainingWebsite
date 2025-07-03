@@ -1,0 +1,108 @@
+@page "/workout/{id:int}"
+
+@rendermode InteractiveServer
+
+@using Microsoft.EntityFrameworkCore
+@using Shared
+@using Models = Shared.Models
+
+@inject AppDbContext DbContext
+@inject ILogger<Workout> Logger
+
+<h3>@_workoutPlan.Name</h3>
+
+@foreach (var w in _workouts)
+{
+    <h4>@w.Name</h4>
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Reps</th>
+            <th>Weight</th>
+            <th>Completed</th>
+            <th>Skipped</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach(var e in w.Exercises)
+        {
+            <tr>
+                <td><input style="width:75px;" 
+                           type="number" 
+                           @bind="@e.Reps" 
+                           @bind:event="oninput" 
+                           @onchange="@(() => DebounceSaveExercise(e))"/></td>
+                
+                <td><input style="width:75px;" 
+                           type="number" 
+                           @bind="@e.Weight" 
+                           @bind:event="oninput" 
+                           @onchange="@(() => DebounceSaveExercise(e))"/></td>
+
+                <td><input type="checkbox" 
+                           @bind="@e.Completed" 
+                           @bind:event="oninput" 
+                           @onchange="@(() => SaveExercise(e))"/></td>
+                
+                <td><input type="checkbox" 
+                           @bind="@e.Skipped" 
+                           @bind:event="oninput" 
+                           @onchange="@(() => SaveExercise(e))"/></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+    
+    private Models.WorkoutPlan _workoutPlan = new();
+    private IEnumerable<Models.Workout> _workouts = [];
+    
+    private readonly Dictionary<int, CancellationTokenSource> _debounceTokens = new();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _workouts = DbContext.Workouts
+                .Where(x => x.WorkoutPlanId == Id)
+                .Include(x => x.Exercises);
+
+            _workoutPlan = DbContext.WorkoutPlans
+                .First(x => x.Id == _workouts.First().WorkoutPlanId);
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task DebounceSaveExercise(Models.Exercise e)
+    {
+        if (_debounceTokens.TryGetValue(e.Id, out var cts))
+        {
+            await cts.CancelAsync();
+            cts.Dispose();
+        }
+
+        var newCts = new CancellationTokenSource();
+        _debounceTokens[e.Id] = newCts;
+
+        try
+        {
+            await Task.Delay(2000, newCts.Token); // 2s debounce
+            SaveExercise(e);
+        }
+        catch (TaskCanceledException)
+        {
+            // Ignore cancellation
+        }
+    }
+
+    private void SaveExercise(Models.Exercise exercise)
+    {
+        DbContext.Exercises.Update(exercise);
+        DbContext.SaveChanges();
+    }
+}
