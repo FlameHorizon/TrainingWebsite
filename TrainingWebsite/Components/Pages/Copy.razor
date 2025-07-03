@@ -74,7 +74,8 @@ Once copy is created, user is redirected to it.
 	    
 	    Models.WorkoutPlan newWorkoutPlan = new()
 	    {
-		    Name = _newWorkoutName
+		    Name = _newWorkoutName,
+		    Tag = _workoutPlan.Tag
 	    };
 	    
 	    foreach (var w in _workoutPlan.Workouts)
