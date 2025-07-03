@@ -51,7 +51,8 @@
         _workoutPlans = workoutPlans;
         _exercisesFilter = workoutPlans
             .SelectMany(x => x.Workouts)
-            .Select(x => x.Name);
+            .Select(x => x.Name)
+            .Distinct();
 
         // Collect headers
         UpdateDates(workoutPlans);
@@ -74,46 +75,64 @@
 
         _data = new ChartData()
         {
-            Datasets = GetDataset(),
-            Labels = GetLabels()
+            Datasets = GetDataset(_workoutPlans, _dates),
+            Labels = GetLabels(_dates)
         };
     }
 
-    private List<string>? GetLabels()
+    private List<string>? GetLabels(IEnumerable<DateTime> dates)
     {
         var labels = new List<string>();
-        foreach (var d in _dates.Order())
+        foreach (var d in dates.Order())
         {
             labels.Add(d.ToString("yyyy-MM-dd"));
         }
         return labels;
     }
 
-    private List<IChartDataset>? GetDataset()
-    {
+    private List<IChartDataset>? GetDataset(IEnumerable<Models.WorkoutPlan> workoutPlans, IEnumerable<DateTime> dates)
+    { 
         string[] colors = ColorUtility.CategoricalTwelveColors;
+        int currentColorIndex = 0;
         var datasets = new List<IChartDataset>();
-        var data = new List<double?>();
-        
-        foreach (var wp in _workoutPlans.OrderBy(x => x.Name.Split(" ").Last()))
-        {
-            var sum = wp.Workouts.SelectMany(x => x.Exercises)
-                .Sum(x => x.Reps * x.Weight);
-            
-            data.Add(sum);
-        }
+        var groups = workoutPlans.GroupBy(x => x.Tag);
 
-        var chartDataset = new LineChartDataset()
+        foreach(var group in groups)
         {
-            Data = data,
-            Label = "Workload",
-            BackgroundColor = colors[1],
-            BorderColor = colors[1],
-            BorderWidth = 2,
-            Tension = 0.5
-        };
+            var data = new List<double?>();
+            foreach (var dt in dates.Select(x => x.ToString("yyyy-MM-dd")))
+            {
+                // Is there workout plan with that day?
+                // If yes, add effort for that day.
+                // Otherwise add zero.
+
+                var v = group.FirstOrDefault(x => x.Name.Split(" ").Last().ToLower() == dt.ToLower());
+                double? effort = 0;
+                if (v is null)
+                {
+                    effort = null;
+                }
+                else
+                {
+                    effort = v.Workouts.SelectMany(x => x.Exercises)
+                        .Sum(x => x.Reps * x.Weight);
+                }
+                data.Add(effort);
+            }
+            
+            var chartDataset = new LineChartDataset()
+            {
+                Data = data,
+                Label = group.Key,
+                BackgroundColor = colors[currentColorIndex],
+                BorderColor = colors[currentColorIndex++],
+                BorderWidth = 2,
+                Tension = 0.5,
+                SpanGaps = true // If true, lines will be drawn between points with no or null data.
+            };
         
-        datasets.Add(chartDataset);
+            datasets.Add(chartDataset);
+        }
         return datasets;
     }
 
@@ -173,6 +192,7 @@
         var workoutPlans = _selectedExercise.ToLower() == "none"
             ? UpdateWorkoutPlansNoFilter()
             : UpdateWorkoutPlanFilter(_selectedExercise);
+        _workoutPlans = workoutPlans;
 
         _dates.Clear();
         _names.Clear();
@@ -181,6 +201,31 @@
         UpdateDates(workoutPlans);
         UpdateNames(workoutPlans);
         UpdateBody(workoutPlans);
+        
+        _chartOptions = new LineChartOptions();
+        _chartOptions.Plugins.Title!.Text = "Workload";
+        _chartOptions.Scales.X = new ChartAxes()
+        {
+            Title = new ChartAxesTitle() { Text = "Date", Display = true }
+        };
+
+        _chartOptions.Scales.Y = new ChartAxes()
+        {
+            Title = new ChartAxesTitle() { Text = "Sum of workload", Display = true }
+        };
+
+        _data = new ChartData()
+        {
+            Datasets = GetDataset(_workoutPlans, _dates),
+            Labels = GetLabels(_dates)
+        };
+
+        if (_selectedExercise.ToLower() != "none")
+        {
+            ((LineChartDataset)(_data.Datasets.First())).Label = _selectedExercise;
+        }
+
+        _chart.UpdateAsync(_data, _chartOptions);
         
         StateHasChanged();
     }
