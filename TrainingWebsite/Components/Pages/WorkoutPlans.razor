@@ -12,7 +12,7 @@
 <ul>
 @foreach (var wp in _workoutPlans)
 {
-    <li><a href="/workout/@wp.Id">@wp.Name</a></li>
+    <li><a href="/workout/@wp.Id">@wp.Name</a> | <a href="/copy/@wp.Id">Copy</a></li>
 }
 </ul>
 
@@ -28,7 +28,7 @@
                 .ToList()
                 .OrderBy(x => x.Name.Split(" ").Last())
                 .ToList();
-            
+
             StateHasChanged();
         }
     }

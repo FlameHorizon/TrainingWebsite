@@ -1,0 +1,129 @@
+@page "/copy/{id:int}"
+
+@* Do it need InteractiveServer render mode? *@
+@rendermode InteractiveServer
+
+@using Microsoft.EntityFrameworkCore
+@using Shared
+@using Models = Shared.Models
+
+@inject AppDbContext DbContext
+@inject ILogger<Workout> Logger
+
+<h3>Copy workout</h3>
+
+<label for="workout_name">Workout name</label>
+<input type="text" 
+       id="workout_name" 
+       name="workout_name" 
+       value="@_initialWorkoutName" 
+       @onchange="UpdateNewWorkoutName"/>
+
+<button type="submit" @onclick="MakeCopy">Make copy</button>
+
+@*
+Here will be input box which first populates
+with name of the workout you want to copy.
+Then user changes this value and presses
+'make copy' buttont to create actual copy.
+Once copy is created, user is redirected to it.
+*@
+
+@code {
+    // Copy from ID.
+    [Parameter]
+    public int Id { get; set; }
+
+    // Initial workout name shown to the user.
+    private string _initialWorkoutName = string.Empty;
+
+    private Models.WorkoutPlan _workoutPlan = new();
+
+    // Name of the new workout provided by the user.
+    private string _newWorkoutName = string.Empty;
+
+    protected override void OnAfterRender(bool firstRender) 
+    {
+		if (firstRender)
+		{
+			_workoutPlan = DbContext.WorkoutPlans
+				.Include(x => x.Workouts)
+				.ThenInclude(x => x.Exercises)
+				.AsNoTracking()
+				.First(x => x.Id == Id);
+
+			_initialWorkoutName = _workoutPlan.Name;
+
+			StateHasChanged();
+		}
+    }
+
+    private void MakeCopy()
+    {
+	    int? lastWorkoutPlanId = DbContext.Workouts.Max(x => x.WorkoutPlanId);
+	    int nextWorkoutPlanId;
+	    
+	    if (lastWorkoutPlanId is null)
+	    {
+		    nextWorkoutPlanId = 1;
+	    }
+	    else
+	    {
+		    nextWorkoutPlanId = lastWorkoutPlanId.Value + 1;
+	    }
+	    
+	    Models.WorkoutPlan newWorkoutPlan = new()
+	    {
+		    Name = _newWorkoutName
+	    };
+	    
+	    foreach (var w in _workoutPlan.Workouts)
+	    {
+		    var newWorkout = new Models.Workout
+		    {
+			    Name = w.Name,
+			    WorkoutPlanId = nextWorkoutPlanId
+		    };
+
+		    foreach (var e in w.Exercises)
+		    {
+			    var newExercises = new Models.Exercise
+			    {
+				    Reps = e.Reps,
+				    Weight = e.Weight
+			    };
+
+			    newWorkout.Exercises.Add(newExercises);
+		    }
+		    
+			newWorkoutPlan.Workouts.Add(newWorkout);
+	    }
+
+	    DbContext.WorkoutPlans.Add(newWorkoutPlan);
+	    DbContext.SaveChanges();
+	    
+	    Logger.LogInformation("Copy has been made. New workout name is '{name}'", _newWorkoutName);
+    }
+
+    private void UpdateNewWorkoutName(ChangeEventArgs e)
+    {
+	    if (e.Value is null)
+	    {
+		    Logger.LogInformation("Can't update name, value is null.");
+		    return;
+	    }
+
+	    string? v = e.Value.ToString();
+
+	    if (v is null)
+	    {
+		    Logger.LogInformation("Can't convert given name, it is not a string.");
+		    return;
+	    }
+
+	    _newWorkoutName = v;
+    }
+
+}
+
+
