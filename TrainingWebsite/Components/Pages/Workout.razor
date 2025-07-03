@@ -14,7 +14,7 @@
 @foreach (var w in _workouts)
 {
     <h4>@w.Name</h4>
-    <table class="table">
+    <table class="table table-sm">
         <thead>
         <tr>
             <th>Reps</th>
@@ -24,7 +24,7 @@
         </tr>
         </thead>
         <tbody>
-        @foreach(var e in w.Exercises)
+        @foreach(var e in w.Exercises.OrderBy(x => x.Weight))
         {
             <tr>
                 <td><input style="width:75px;" 
