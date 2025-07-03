@@ -14,8 +14,6 @@
 
 <select name="exercises" id="exercises" @bind="_selectedExercise" @bind:after="PrintResult">
     <option value="None">None</option>
-    @* <option value="Leg Curl">Leg Curl</option> *@
-    
     @foreach (var e in _exercisesFilter)
     {
         <option value="@e">@e</option>
